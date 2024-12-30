@@ -1,6 +1,5 @@
 #include "engine.h"
 #include <algorithm>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -11,48 +10,48 @@ using namespace Util;
 
 void Logger::log(Severity severity, const char *msg) noexcept {
     switch (severity) {
-        case Severity::kVERBOSE:
-            spdlog::debug(msg);
-            break;
-        case Severity::kINFO:
-            spdlog::info(msg);
-            break;
-        case Severity::kWARNING:
-            spdlog::warn(msg);
-            break;
-        case Severity::kERROR:
-            spdlog::error(msg);
-            break;
-        case Severity::kINTERNAL_ERROR:
-            spdlog::critical(msg);
-            break;
-        default:
-            spdlog::info("Unexpected severity level");
+    case Severity::kVERBOSE:
+    case Severity::kINFO:
+        std::cout << msg << '\n';
+        break;
+    case Severity::kWARNING:
+    case Severity::kERROR:
+    case Severity::kINTERNAL_ERROR:
+        std::cerr << msg << '\n';
+        break;
+    default:
+        std::cerr << "Unexpected severity level\n";
     }
 }
 
-Int8EntropyCalibrator2::Int8EntropyCalibrator2(int32_t batchSize, int32_t inputW, int32_t inputH, const std::string &calibDataDirPath,
-                                               const std::string &calibTableName, const std::string &inputBlobName,
-                                               const std::array<float, 3> &subVals, const std::array<float, 3> &divVals, bool normalize,
-                                               bool readCache)
-    : m_batchSize(batchSize), m_inputW(inputW), m_inputH(inputH), m_imgIdx(0), m_calibTableName(calibTableName),
-      m_inputBlobName(inputBlobName), m_subVals(subVals), m_divVals(divVals), m_normalize(normalize), m_readCache(readCache) {
+Int8EntropyCalibrator2::Int8EntropyCalibrator2(
+    int32_t batchSize, int32_t inputW, int32_t inputH,
+    const std::string &calibDataDirPath, const std::string &calibTableName,
+    const std::string &inputBlobName, const std::array<float, 3> &subVals,
+    const std::array<float, 3> &divVals, bool normalize, bool readCache)
+    : m_batchSize(batchSize), m_inputW(inputW), m_inputH(inputH), m_imgIdx(0),
+      m_calibTableName(calibTableName), m_inputBlobName(inputBlobName),
+      m_subVals(subVals), m_divVals(divVals), m_normalize(normalize),
+      m_readCache(readCache) {
 
     // Allocate GPU memory to hold the entire batch
     m_inputCount = 3 * inputW * inputH * batchSize;
-    checkCudaErrorCode(cudaMalloc(&m_deviceInput, m_inputCount * sizeof(float)));
+    checkCudaErrorCode(
+        cudaMalloc(&m_deviceInput, m_inputCount * sizeof(float)));
 
     // Read the name of all the files in the specified directory.
     if (!doesFileExist(calibDataDirPath)) {
-        auto msg = "Error, directory at provided path does not exist: " + calibDataDirPath;
-        spdlog::error(msg);
+        auto msg = "Error, directory at provided path does not exist: " +
+                   calibDataDirPath;
+        std::cerr << msg << '\n';
         throw std::runtime_error(msg);
     }
 
     m_imgPaths = getFilesInDirectory(calibDataDirPath);
     if (m_imgPaths.size() < static_cast<size_t>(batchSize)) {
-        auto msg = "Error, there are fewer calibration images than the specified batch size!";
-        spdlog::error(msg);
+        auto msg = "Error, there are fewer calibration images than the "
+                   "specified batch size!";
+        std::cerr << msg << '\n';
         throw std::runtime_error(msg);
     }
 
@@ -67,7 +66,8 @@ int32_t Int8EntropyCalibrator2::getBatchSize() const noexcept {
     return m_batchSize;
 }
 
-bool Int8EntropyCalibrator2::getBatch(void **bindings, const char **names, int32_t nbBindings) noexcept {
+bool Int8EntropyCalibrator2::getBatch(void **bindings, const char **names,
+                                      int32_t nbBindings) noexcept {
     // This method will read a batch of images into GPU memory, and place the
     // pointer to the GPU memory in the bindings variable.
 
@@ -79,58 +79,70 @@ bool Int8EntropyCalibrator2::getBatch(void **bindings, const char **names, int32
     // Read the calibration images into memory for the current batch
     std::vector<cv::cuda::GpuMat> inputImgs;
     for (int i = m_imgIdx; i < m_imgIdx + m_batchSize; i++) {
-        spdlog::info("Reading image {}: {}", i, m_imgPaths[i]);
+        std::cout << "Reading image " << i << ": " << m_imgPaths[i] << '\n';
         auto cpuImg = cv::imread(m_imgPaths[i]);
         if (cpuImg.empty()) {
-            spdlog::error("Fatal error: Unable to read image at path: " + m_imgPaths[i]);
+            std::cerr << "Fatal error: Unable to read image at path: "
+                      << m_imgPaths[i] << '\n';
             return false;
         }
 
         cv::cuda::GpuMat gpuImg;
         gpuImg.upload(cpuImg);
-        //cv::cuda::cvtColor(gpuImg, gpuImg, cv::COLOR_BGR2RGB);
+        // cv::cuda::cvtColor(gpuImg, gpuImg, cv::COLOR_BGR2RGB);
 
         // TODO: Define any preprocessing code here, such as resizing
-        auto resized = Engine<float>::resizeKeepAspectRatioPadRightBottom(gpuImg, m_inputH, m_inputW);
+        auto resized = Engine<float>::resizeKeepAspectRatioPadRightBottom(
+            gpuImg, m_inputH, m_inputW);
 
         inputImgs.emplace_back(std::move(resized));
     }
 
     // Convert the batch from NHWC to NCHW
     // ALso apply normalization, scaling, and mean subtraction
-    auto mfloat = Engine<float>::blobFromGpuMats(inputImgs, m_subVals, m_divVals, m_normalize, true);
+    auto mfloat = Engine<float>::blobFromGpuMats(inputImgs, m_subVals,
+                                                 m_divVals, m_normalize, true);
     auto *dataPointer = mfloat.ptr<void>();
 
     // Copy the GPU buffer to member variable so that it persists
-    checkCudaErrorCode(cudaMemcpyAsync(m_deviceInput, dataPointer, m_inputCount * sizeof(float), cudaMemcpyDeviceToDevice));
+    checkCudaErrorCode(cudaMemcpyAsync(m_deviceInput, dataPointer,
+                                       m_inputCount * sizeof(float),
+                                       cudaMemcpyDeviceToDevice));
 
     m_imgIdx += m_batchSize;
     if (std::string(names[0]) != m_inputBlobName) {
-        spdlog::error("Error: Incorrect input name provided!");
+        std::cerr << "Error: Incorrect input name provided!\n";
         return false;
     }
     bindings[0] = m_deviceInput;
     return true;
 }
 
-void const *Int8EntropyCalibrator2::readCalibrationCache(size_t &length) noexcept {
-    spdlog::info("Searching for calibration cache: {}", m_calibTableName);
+void const *
+Int8EntropyCalibrator2::readCalibrationCache(size_t &length) noexcept {
+    std::cout << "Searching for calibration cache: " << m_calibTableName
+              << '\n';
     m_calibCache.clear();
     std::ifstream input(m_calibTableName, std::ios::binary);
     input >> std::noskipws;
     if (m_readCache && input.good()) {
-        spdlog::info("Reading calibration cache: {}", m_calibTableName);
-        std::copy(std::istream_iterator<char>(input), std::istream_iterator<char>(), std::back_inserter(m_calibCache));
+        std::cout << "Reading calibration cache: " << m_calibTableName << '\n';
+        std::copy(std::istream_iterator<char>(input),
+                  std::istream_iterator<char>(),
+                  std::back_inserter(m_calibCache));
     }
     length = m_calibCache.size();
     return length ? m_calibCache.data() : nullptr;
 }
 
-void Int8EntropyCalibrator2::writeCalibrationCache(const void *ptr, std::size_t length) noexcept {
-    spdlog::info("Writing calibration cache: {}", m_calibTableName);
-    spdlog::info("Calibration cache size: {} bytes", length);
+void Int8EntropyCalibrator2::writeCalibrationCache(
+    const void *ptr, std::size_t length) noexcept {
+    std::cout << "Writing calibration cache: " << m_calibTableName << '\n';
+    std::cout << "Calibration cache size: " << length << " bytes\n";
     std::ofstream output(m_calibTableName, std::ios::binary);
     output.write(reinterpret_cast<const char *>(ptr), length);
 }
 
-Int8EntropyCalibrator2::~Int8EntropyCalibrator2() { checkCudaErrorCode(cudaFree(m_deviceInput)); };
+Int8EntropyCalibrator2::~Int8EntropyCalibrator2() {
+    checkCudaErrorCode(cudaFree(m_deviceInput));
+};

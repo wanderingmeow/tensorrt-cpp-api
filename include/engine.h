@@ -12,7 +12,6 @@
 #include <opencv2/opencv.hpp>
 
 #include "IEngine.h"
-#include "logger.h"
 #include "Int8Calibrator.h"
 #include "util/Util.h"
 #include "util/Stopwatch.h"

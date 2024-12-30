@@ -1,11 +1,12 @@
 #pragma once
 
-#include <spdlog/spdlog.h>
+#include <iostream>
+#include <cstdlib>
 
 #define CHECK(condition)                                                                                                                   \
     do {                                                                                                                                   \
         if (!(condition)) {                                                                                                                \
-            spdlog::error("Assertion failed: ({}), function {}, file {}, line {}.", #condition, __FUNCTION__, __FILE__, __LINE__);         \
-            abort();                                                                                                                       \
+            std::cerr << "Assertion failed: (" << #condition << "), function " << __FUNCTION__ << ", file " << __FILE__ << ", line " << __LINE__ << ".\n"; \
+            std::abort();                                                                                                                  \
         }                                                                                                                                  \
     } while (false);

@@ -1,10 +1,11 @@
 #pragma once
-#include "engine.h"
+#include <util/Util.h>
 #include <iostream>
 
 struct CommandLineArguments {
     std::string onnxModelPath = "";
     std::string trtModelPath = "";
+    std::string imagePath = "";
 };
 
 inline void showHelp(char *argv[]) {
@@ -17,9 +18,11 @@ inline void showHelp(char *argv[]) {
     std::cout << "--trt_model <string>              Path to the TensorRT model. "
                  "(Either onnx_model or trt_model must be provided)"
               << std::endl;
+    std::cout << "--image <string>                  Path to the image. "
+              << std::endl;
 
     std::cout << "Example usage:" << std::endl;
-    std::cout << argv[0] << " --onnx_model model.onnx" << std::endl;
+    std::cout << argv[0] << " --onnx_model model.onnx --image inputs/team.jpg" << std::endl;
 };
 
 inline bool tryGetNextArgument(int argc, char *argv[], int &currentIndex, std::string &value, std::string flag, bool printErrors = true) {
@@ -77,6 +80,18 @@ inline bool parseArguments(int argc, char *argv[], CommandLineArguments &argumen
                 arguments.trtModelPath = nextArgument;
             }
 
+            else if (flag == "trt_model") {
+                if (!tryGetNextArgument(argc, argv, i, nextArgument, flag))
+                    return false;
+
+                if (!Util::doesFileExist(nextArgument)) {
+                    std::cout << "Error: Unable to find image at path '" << nextArgument << "' for flag '" << flag << "'" << std::endl;
+                    return false;
+                }
+
+                arguments.imagePath = nextArgument;
+            }
+
             else {
                 std::cout << "Error: Unknown flag '" << flag << "'" << std::endl;
                 showHelp(argv);
@@ -91,6 +106,11 @@ inline bool parseArguments(int argc, char *argv[], CommandLineArguments &argumen
 
     if (arguments.onnxModelPath.empty() && arguments.trtModelPath.empty()) {
         std::cout << "Error: Must specify either 'onnx_model' or 'trt_model'" << std::endl;
+        return false;
+    }
+
+    if (arguments.imagePath.empty()) {
+        std::cout << "Error: Must specify image" << std::endl;
         return false;
     }
 
