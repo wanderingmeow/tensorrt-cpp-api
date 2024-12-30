@@ -1,5 +1,7 @@
 This version of the [tensorrt-cpp-api](https://github.com/cyrusbehr/tensorrt-cpp-api) has been modified to support exclusively CUDA 10.2 and TensorRT 8.2, tested on Tegra X1 running L4T 32.7.x.
 
+For compiling and installing latest OpenCV with CUDA support, see [this tutorial](https://qengineering.eu/install-opencv-on-jetson-nano.html). Tested with OpenCV 4.11-pre.
+
 [![Stargazers][stars-shield]][stars-url]
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square)](#contributors-)
